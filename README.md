@@ -11,3 +11,5 @@
    docker container run -d -p 8080:8080 -v jenkins:/var/jenkins_home --name jenkins-local env JENKINS_OPTS="--prefix=/jenkins jenkins/jenkins:lts <br />
 9. Using the jenkins job file create a job to run on the app node and build and deploy the app using the job <br />
 10. Access the applciation using ALB/app <br />
+
+![Screenshot](assignment.jpg)
