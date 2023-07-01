@@ -1,0 +1,49 @@
+//inventory file on jumphost
+[all]
+10.0.2.190 ansible_ssh_user=ubuntu ansible_ssh_private_key_file="jump-key"
+10.0.1.10 ansible_ssh_user=ubuntu ansible_ssh_private_key_file="jump-key"
+
+//docker.yml on jumphost
+
+- hosts: all
+  become: true
+
+  tasks:
+    - name: Install aptitude using apt
+      apt: name=aptitude state=latest update_cache=yes force_apt_get=yes
+
+    - name: Install required system packages
+      apt: name={{ item }} state=latest update_cache=yes
+      loop: [ 'apt-transport-https', 'ca-certificates', 'curl', 'software-properties-common', 'python3-pip', 'virtualenv', 'python3-setuptools']
+
+    - name: Add Docker GPG apt Key
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu bionic stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      apt: update_cache=yes name=docker-ce state=latest
+
+docker container run -d -p 8080:8080 -v jenkins:/var/jenkins_home --name jenkins-local --env JENKINS_OPTS="--prefix=/jenkins" jenkins/jenkins:lts
+
+
+- hosts: all
+  become: true
+tasks:
+    - name: Task - 1 Update APT package manager repositories cache
+      become: true
+      apt:
+        update_cache: yes
+    - name: Task -2 Install Java using Ansible
+      become: yes
+      apt:
+        name: "{{ packages }}"
+        state: present
+      vars:
+        packages:
+           - openjdk-11-jdk

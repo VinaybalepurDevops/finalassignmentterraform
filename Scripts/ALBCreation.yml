@@ -1,0 +1,142 @@
+# Security group for ALB
+
+module "alb-sg" {
+  source = "terraform-aws-modules/security-group/aws//modules/http-80"
+
+  name                = "alb-sg"
+  description         = "Security group for ALB"
+  vpc_id              = module.vpc.vpc_id
+  ingress_cidr_blocks = []
+  ingress_with_cidr_blocks = [
+    {
+      from_port   = 80
+      to_port     = 80
+      protocol    = "tcp"
+      description = "ALB security group"
+      cidr_blocks = "0.0.0.0/0"
+    }
+  ]
+}
+
+#ALB with target groups for jenkins and app creation 
+module "alb" {
+  source  = "terraform-aws-modules/alb/aws"
+  version = "~> 8.0"
+
+  name = "assignment"
+
+  load_balancer_type = "application"
+
+  vpc_id          = module.vpc.vpc_id
+  subnets         = [module.vpc.public_subnets[0], module.vpc.public_subnets[1]]
+  security_groups = [module.alb-sg.security_group_id]
+
+  target_groups = [
+    {
+      vpc_id           = module.vpc.vpc_id
+      name_prefix      = "jenk-"
+      backend_protocol = "HTTP"
+      backend_port     = 80
+      target_type      = "instance"
+      health_check = {
+        enabled             = true
+        interval            = 30
+        path                = "/jenkins"
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 6
+        protocol            = "HTTP"
+        matcher             = "200-399"
+      }
+      targets = {
+        jenkins_target = {
+          target_id = module.ec2_instance_jenkins.id
+          port      = 8080
+        }
+      }
+    },
+    {
+      vpc_id           = module.vpc.vpc_id
+      name_prefix      = "app-"
+      backend_protocol = "HTTP"
+      backend_port     = 80
+      target_type      = "instance"
+      health_check = {
+        enabled             = true
+        interval            = 30
+        path                = "/app"
+        port                = "traffic-port"
+        healthy_threshold   = 3
+        unhealthy_threshold = 3
+        timeout             = 6
+        protocol            = "HTTP"
+        matcher             = "200-399"
+      }
+      targets = {
+        app_other_target = {
+          target_id = module.ec2_instance_app.id
+          port      = 8080
+        }
+      }
+    }
+  ]
+}
+
+#  Listner creation for two different target groups under alb
+resource "aws_lb_listener" "listner" {
+  load_balancer_arn = module.alb.lb_arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn    = module.alb.target_group_arns[1]
+        weight = 1
+      }
+
+      target_group {
+        arn    = module.alb.target_group_arns[0]
+        weight = 1
+      }
+    }
+  }
+}
+
+# Forward rule for jenkins
+resource "aws_lb_listener_rule" "jenkins" {
+  listener_arn = aws_lb_listener.listner.arn
+
+  action {
+    type             = "forward"
+    target_group_arn = module.alb.target_group_arns[0]
+  }
+
+  condition {
+    path_pattern {
+      values = ["/jenkins*"]
+    }
+  }
+}
+
+#Forward rules for app
+resource "aws_lb_listener_rule" "app" {
+  listener_arn = aws_lb_listener.listner.arn
+
+  action {
+    type             = "forward"
+    target_group_arn = module.alb.target_group_arns[1]
+  }
+
+  condition {
+    path_pattern {
+      values = ["/app*"]
+    }
+  }
+}
+
+output "alb" {
+  value = module.alb.lb_dns_name
+}
